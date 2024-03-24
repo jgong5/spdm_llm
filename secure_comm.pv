@@ -1,0 +1,118 @@
+free c:channel.
+
+(*
+ * Types
+ *)
+type nonce.
+type key.
+type data.
+
+(*
+ * Functions
+ *)
+fun pk(key): key.
+fun encrypt(bitstring, key): bitstring.
+fun decrypt(bitstring, key): bitstring.
+fun mac(bitstring, key): bitstring.
+fun hash(bitstring): bitstring.
+fun sign(bitstring, key): bitstring.
+fun verify(bitstring, bitstring, key): bitstring.
+
+(*
+ * Equations
+ *)
+equation forall x:bitstring, k:key; decrypt(encrypt(x, k), k) = x.
+equation forall x:bitstring, k:key; verify(sign(x, k), x, pk(k)) = x.
+
+(*
+ * Events
+ *)
+event RecvClientAuth(bitstring, bitstring, bitstring, bitstring).
+event SendServerAuth(bitstring, bitstring, bitstring, bitstring, bitstring).
+event RecvData(bitstring, bitstring, bitstring, bitstring).
+
+(*
+ * Processes
+ *)
+let Client(cl:key, sv:key, psk:key, dhg:bitstring, dhp:bitstring) =
+    new n_a:nonce;
+    out(c, cl, n_a);
+    in(c, sv, n_b:nonce, enc_sv_cert:bitstring);
+    let sv_cert = adec(enc_sv_cert, psk) in
+    if sv_cert = <sv, pk(sv)> then
+        new x:nonce;
+        let dh_a = dhg^x in
+        let auth_a = sign(<n_a, n_b, cl, sv>, cl) in
+        out(c, <cl, pk(cl)>, dh_a, auth_a);
+        in(c, dh_b:bitstring, auth_b:bitstring);
+        if verify(auth_b, <n_b, n_a, sv, cl>, pk(sv)) = <n_b, n_a, sv, cl> then
+            let sk = dh_b^x in
+            new n_c:nonce;
+            let data_a = <'Data from A', n_c> in
+            let enc_data_a = encrypt(data_a, sk) in
+            let mac_a = mac(data_a, sk) in
+            let auth_data_a = sign(mac_a, cl) in
+            out(c, enc_data_a, auth_data_a);
+            in(c, enc_data_b:bitstring, auth_data_b:bitstring);
+            if verify(auth_data_b, mac(decrypt(enc_data_b, sk), sk), pk(sv)) = mac(decrypt(enc_data_b, sk), sk) then
+                event RecvData(cl, sv, decrypt(enc_data_b, sk), auth_data_b).
+
+let Server(cl:key, sv:key, psk:key, dhg:bitstring, dhp:bitstring) =
+    in(c, cl:bitstring, n_a:nonce);
+    new n_b:nonce;
+    let enc_sv_cert = encrypt(<sv, pk(sv)>, psk) in
+    out(c, sv, n_b, enc_sv_cert);
+    in(c, cl_cert:bitstring, dh_a:bitstring, auth_a:bitstring);
+    if cl_cert = <cl, pk(cl)> then
+        if verify(auth_a, <n_a, n_b, cl, sv>, pk(cl)) = <n_a, n_b, cl, sv> then
+            new y:nonce;
+            let dh_b = dhg^y in
+            let auth_b = sign(<n_b, n_a, sv, cl>, sv) in
+            out(c, dh_b, auth_b);
+            let sk = dh_a^y in
+            in(c, enc_data_a:bitstring, auth_data_a:bitstring);
+            if verify(auth_data_a, mac(decrypt(enc_data_a, sk), sk), pk(cl)) = mac(decrypt(enc_data_a, sk), sk) then
+                event RecvClientAuth(cl, sv, decrypt(enc_data_a, sk), auth_data_a);
+                new n_d:nonce;
+                let data_b = <'Data from B', n_d> in
+                let enc_data_b = encrypt(data_b, sk) in
+                let mac_b = mac(data_b, sk) in
+                let auth_data_b = sign(mac_b, sv) in
+                out(c, enc_data_b, auth_data_b);
+                event SendServerAuth(cl, sv, data_b, enc_data_b, auth_data_b).
+
+(*
+ * Security Properties
+ *)
+
+(* Mutual Authentication *)
+query x:bitstring, y:bitstring, a:bitstring, b:bitstring, c:bitstring, d:bitstring, e:bitstring;
+    event(RecvClientAuth(x, y, a, b)) ==> event(SendServerAuth(x, y, c, d, e)).
+
+(* Confidentiality *)
+query attacker(sk);
+attacker(sk) ==> false.
+
+(* Integrity *)
+query x:bitstring, y:bitstring, a:bitstring, b:bitstring;
+    event(RecvData(x, y, a, b)) ==> a = <'Data from A', n_c>.
+
+(* Non-repudiation *)
+query x:bitstring, y:bitstring, a:bitstring, b:bitstring;
+    event(RecvData(x, y, a, b)) ==> event(SendData(x, y, encrypt(a, sk), sign(mac(a, sk), x))).
+
+(*
+ * Process Instantiation
+ *)
+process
+    new psk:key;
+    new dhg:bitstring;
+    new dhp:bitstring;
+    (
+        !new cl:key;
+        !new sv:key;
+        (
+            Client(cl, sv, psk, dhg, dhp) |
+            Server(cl, sv, psk, dhg, dhp)
+        )
+    )
