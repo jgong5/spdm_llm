@@ -1,6 +1,4 @@
-# SecureComm Protocol Specification
-
-## Notation:
+**Notation:**
 - A, B: Alice (Client) and Bob (Server)
 - {X}K: X encrypted with key K
 - [X]K: X signed with key K
@@ -9,18 +7,19 @@
 - g^x, g^y: Diffie-Hellman public values
 - SK: Negotiated session key
 
-## Security Goals:
+**Security Goals:**
 - Mutual Authentication
 - Confidentiality of messages
 - Integrity of messages
 - Non-repudiation of origin
 
-## Assumptions:
+**Assumptions:**
 - A and B have a pre-shared secret key (PSK) or certificate authority (CA) for authentication
 - Diffie-Hellman parameters and cryptographic algorithms are negotiated out-of-band
 - A and B have access to each other's public keys for digital signatures
 
-## Message Flow:
+**Message Flow:**
+
 ```
 A -> B: A, N_A
 B -> A: B, N_B, {B_cert}PSK
@@ -33,7 +32,7 @@ A -> B: {Data_A}SK, [H(Data_A)]pvt(A)
 B -> A: {Data_B}SK, [H(Data_B)]pvt(B)
 ```
 
-## Message Formats:
+**Message Formats:**
 
 1. `A -> B: A, N_A`
    - A: Client identifier
@@ -61,41 +60,42 @@ B -> A: {Data_B}SK, [H(Data_B)]pvt(B)
    - {Data_B}SK: Data from B encrypted with session key
    - [H(Data_B)]pvt(B): Hash of Data_B signed with B's private key
 
-## State Transition Diagrams:
+**State Transition Diagrams:**
+
 ```
 Client (A) State Transition:
 
 Start -> Send(A, N_A) -> Recv(B, N_B, {B_cert}PSK)
-|
-| if B_cert is valid
-v
-Send(A_cert, [g^x]pvt(A), {N_A, N_B, A, B}pvt(A)) -> Recv([g^y]pvt(B), {N_A, N_B, B, A}pvt(B))
-|
-| if g^y and signature are valid
-| calculate SK = g^(xy)
-v
-Send({Data_A}SK, [H(Data_A)]pvt(A)) -> Recv({Data_B}SK, [H(Data_B)]pvt(B))
-|
-| if MAC is valid
-v
-End
+           |
+           | if B_cert is valid
+           v
+         Send(A_cert, [g^x]pvt(A), {N_A, N_B, A, B}pvt(A)) -> Recv([g^y]pvt(B), {N_A, N_B, B, A}pvt(B))
+           |
+           | if g^y and signature are valid
+           | calculate SK = g^(xy)
+           v
+         Send({Data_A}SK, [H(Data_A)]pvt(A)) -> Recv({Data_B}SK, [H(Data_B)]pvt(B))
+           |
+           | if MAC is valid
+           v
+         End
 
 Server (B) State Transition:
 
 Start -> Recv(A, N_A) -> Send(B, N_B, {B_cert}PSK)
-|
-v
-Recv(A_cert, [g^x]pvt(A), {N_A, N_B, A, B}pvt(A)) -> if A_cert and signatures are valid
-|
-v
-Send([g^y]pvt(B), {N_A, N_B, B, A}pvt(B)) -> calculate SK = g^(xy)
-|
-v
-Recv({Data_A}SK, [H(Data_A)]pvt(A)) -> if MAC is valid
-|
-v
-Send({Data_B}SK, [H(Data_B)]pvt(B))
-|
-v
-End
+           |
+           v
+         Recv(A_cert, [g^x]pvt(A), {N_A, N_B, A, B}pvt(A)) -> if A_cert and signatures are valid
+           |
+           v
+         Send([g^y]pvt(B), {N_A, N_B, B, A}pvt(B)) -> calculate SK = g^(xy)
+           |
+           v
+         Recv({Data_A}SK, [H(Data_A)]pvt(A)) -> if MAC is valid
+           |
+           v
+         Send({Data_B}SK, [H(Data_B)]pvt(B))
+           |
+           v
+         End
 ```
