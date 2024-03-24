@@ -1,0 +1,137 @@
+theory SecureComm begin
+
+// Typed function symbols
+builtins: symmetric-encryption, multiset
+
+// Functions
+functions: mac/2, h/1, pk/1, encrypt/2, decrypt/2, sign/2, verify/3
+
+// Equations
+equations:
+    decrypt(encrypt(m, k), k) = m
+
+/*
+ * Protocol roles
+ */
+
+// Client role
+rule Client_Sends_Nonce:
+    [ Fr($A), Fr($N_A) ]
+    --[ SendNonce($A, $N_A) ]->
+    [ Out($A), Out($N_A) ]
+
+rule Client_Receives_Server_Cert:
+    let
+        cert_B = encrypt(<$B, pk($ltkB)>, ltkS)
+    in
+    [ Fr($ltkS), Fr($ltkB), Fr($N_B), In($B), In($N_B), In(cert_B) ]
+    --[ RecvServerCert($A, $B, $N_B, cert_B) ]->
+    [ !Pk($B, pk($ltkB)), !Pk($S, pk($ltkS)), Out(<$A, $N_A, $B, $N_B>) ]
+
+rule Client_Sends_Auth:
+    let
+        cert_A = <$A, pk($ltkA)>
+        dh_A = 'g'^~x
+        auth_A = sign(<$N_A, $N_B, $A, $B>, $ltkA)
+    in
+    [ Fr($ltkA), Fr(~x), In(<$A, $N_A, $B, $N_B>), !Pk($B, pk($ltkB)) ]
+    --[ SendAuth($A, $B, cert_A, dh_A, auth_A) ]->
+    [ Out(cert_A), Out(dh_A), Out(auth_A) ]
+
+rule Client_Receives_Server_Auth:
+    let
+        dh_B = 'g'^~y
+        auth_B = sign(<$N_A, $N_B, $B, $A>, $ltkB)
+        sk = 'g'^(~x * ~y)
+    in
+    [ In($B), In(dh_B), In(auth_B), !Pk($B, pk($ltkB)), !Pk($A, pk($ltkA)),
+      !Pk($S, pk($ltkS)), Fr(~x), Fr(~y) ]
+    --[ RecvServerAuth($A, $B, dh_B, auth_B, sk) ]->
+    [ !Sk($A, $B, sk) ]
+
+rule Client_Sends_Data:
+    let
+        data_A = <'Data from A', $N_A>
+        enc_data_A = encrypt(data_A, $sk)
+        mac_A = mac(data_A, $sk)
+        auth_data_A = sign(mac_A, $ltkA)
+    in
+    [ !Sk($A, $B, $sk), !Pk($A, pk($ltkA)), Fr($N_A) ]
+    --[ SendData($A, $B, enc_data_A, auth_data_A) ]->
+    [ Out(enc_data_A), Out(auth_data_A) ]
+
+// Server role
+rule Server_Receives_Nonce:
+    [ In($A), In($N_A) ]
+    --[ RecvNonce($A, $N_A) ]->
+    [ Fr($B), Fr($N_B), Fr($ltkB), !Pk($B, pk($ltkB)), Out($B), Out($N_B) ]
+
+rule Server_Sends_Cert:
+    let
+        cert_B = encrypt(<$B, pk($ltkB)>, $ltkS)
+    in
+    [ Fr($ltkS), Fr($ltkB), !Pk($B, pk($ltkB)), In($A), In($N_A) ]
+    --[ SendCert($A, $B, $N_A, $N_B, cert_B) ]->
+    [ Out(cert_B), Out($N_B) ]
+
+rule Server_Receives_Client_Auth:
+    let
+        cert_A = <$A, pk($ltkA)>
+        dh_A = 'g'^~x
+        auth_A = sign(<$N_A, $N_B, $A, $B>, $ltkA)
+    in
+    [ !Pk($A, pk($ltkA)), In(cert_A), In(dh_A), In(auth_A), Fr(~x) ]
+    --[ RecvClientAuth($A, $B, cert_A, dh_A, auth_A) ]->
+    [ !Pk($A, pk($ltkA)), Fr(~y), Out('g'^~y) ]
+
+rule Server_Sends_Auth:
+    let
+        dh_B = 'g'^~y
+        auth_B = sign(<$N_A, $N_B, $B, $A>, $ltkB)
+        sk = 'g'^(~x * ~y)
+    in
+    [ !Pk($A, pk($ltkA)), !Pk($B, pk($ltkB)), Fr(~x), Fr(~y), In($A), In($N_A), In($N_B) ]
+    --[ SendAuth($A, $B, dh_B, auth_B, sk) ]->
+    [ Out(dh_B), Out(auth_B), !Sk($A, $B, sk) ]
+
+rule Server_Receives_Data:
+    let
+        data_A = <'Data from A', $N_A>
+        enc_data_A = encrypt(data_A, $sk)
+        mac_A = mac(data_A, $sk)
+        auth_data_A = sign(mac_A, $ltkA)
+    in
+    [ !Sk($A, $B, $sk), !Pk($A, pk($ltkA)), In(enc_data_A), In(auth_data_A) ]
+    --[ RecvData($A, $B, enc_data_A, auth_data_A) ]->
+    [ ]
+
+/*
+ * Security properties
+ */
+
+// Mutual authentication
+lemma mutual_authentication:
+    "All a b #i #j. RecvServerAuth(a, b, 'g'^y, sign(<ni, nj, b, a>, ltkb), 'g'^(x * y))@i
+                    & RecvClientAuth(a, b, <a, pk(ltka)>, 'g'^x, sign(<ni, nj, a, b>, ltka))@j
+                    ==> (Ex #k. SendAuth(a, b, 'g'^x, sign(<ni, nj, a, b>, ltka), 'g'^(x * y))@k
+                          & Ex #l. SendAuth(a, b, 'g'^y, sign(<ni, nj, b, a>, ltkb), 'g'^(x * y))@l)"
+
+// Confidentiality
+lemma confidentiality:
+    "All a b data #i #j. SendData(a, b, encrypt(data, sk), mac(data, sk))@i
+                         & RecvData(a, b, encrypt(data, sk), sign(mac(data, sk), ltka))@j
+                         ==> (not(Ex #r. K(sk)@r))"
+
+// Integrity
+lemma integrity:
+    "All a b data #i #j. SendData(a, b, encrypt(data, sk), sign(mac(data, sk), ltka))@i
+                         & RecvData(a, b, encrypt(data, sk), sign(mac(data, sk), ltka))@j
+                         ==> (data = <'Data from A', n_a>)"
+
+// Non-repudiation
+lemma non_repudiation:
+    "All a b data mac sig #i #j. RecvData(a, b, encrypt(data, sk), sig)@i
+                                  & verify(sig, mac(data, sk), pk(ltka))@j
+                                  ==> (Ex #k. SendData(a, b, encrypt(data, sk), sign(mac(data, sk), ltka))@k)"
+
+end
