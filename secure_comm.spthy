@@ -4,11 +4,12 @@ theory SecureComm begin
 builtins: symmetric-encryption, multiset
 
 // Functions
-functions: mac/2, h/1, pk/1, encrypt/2, decrypt/2, sign/2, verify/3
+functions: mac/2, h/1, pk/1, encrypt/2, decrypt/2, sign/2, verify/3, true/0 
 
 // Equations
 equations:
-    decrypt(encrypt(m, k), k) = m
+    decrypt(encrypt(m, k), k) = m,
+    verify(sign(m, pk(k)), m, k) = true
 
 /*
  * Protocol roles
