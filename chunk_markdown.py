@@ -1,6 +1,6 @@
 import re
 
-def markdown_to_chunks(filename, chunk_size=4000):
+def markdown_to_chunks(filename, chunk_size=8000):
     """
     Splits a Markdown file into chunks with a maximum token size.
 

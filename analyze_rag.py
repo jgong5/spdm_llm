@@ -113,8 +113,13 @@ if __name__ == "__main__":
     response = query_assistant(
         assistant.id, thread.id, knowledge_base.id,
         (
-            "Could you please elaborate on the protocols of SDPM? How do the requestor and responder interact? "
-            "Can you provide pseudo code for the protocol?"
+            """Could you please elaborate on the protocols of SDPM? How do the requestor and responder interact? 
+As an expert in ProVerif, can you generate the complete ProVerif code for the SPDM protocols involving cryptographic 
+operations, both asymmetric key exchange and Pre-Shared Keys (PSK) session management and error handling mechanisms? 
+The code is expected to implement the protocol sequence for the requester and responder participating in the SPDM. 
+Avoid ignoring details. Avoid showing simplified versions. Do not just show ideas. Show the complete code that can 
+be directly fed to ProVerif to compile and verify.
+"""
         )
     )
     print(response)
